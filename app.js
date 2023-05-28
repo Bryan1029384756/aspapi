@@ -86,7 +86,7 @@ async function getBuilds(url, branch) {
       const buildInfo = {
         id: build.id,
         branch: branch,
-        artifacts_url: domain + "/v1/builds/" + build.id + "/artifacts/",
+        // artifacts_url: domain + "/v1/builds/" + build.id,
       };
       builds.push(buildInfo);
     }
