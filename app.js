@@ -221,7 +221,6 @@ app.get("/v1/builds/:id", async (req, res) => {
     }
 
     const artifactUrlsJSON = await getBuildArtifacts(id);
-    console.log(artifactUrlsJSON);
     const artifactUrls = JSON.parse(artifactUrlsJSON);
 
     // Cache the result indefinitely in Redis
