@@ -82,6 +82,7 @@ async function getBuilds(url, branch) {
     const test = JSON.parse(data);
     const buildsData = test.build;
     for (const build of buildsData) {
+      if (build.id <= 281) continue;
       const buildInfo = {
         id: build.id,
         branch: branch,
