@@ -96,6 +96,7 @@ async function getBuilds(url, branch) {
 
 async function getBuildArtifacts(id) {
   try {
+    await getCookie();
     const config = {
       headers: {
         "User-Agent":
@@ -172,11 +173,11 @@ app.get("/v1/builds", (req, res) => {
 });
 
 app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
-  await getCookie();
   const id = req.params.id;
   const artifactId = req.params.artifactId;
 
   try {
+    await getCookie();
     const config = {
       headers: {
         "User-Agent":
@@ -220,6 +221,7 @@ app.get("/v1/builds/:id", async (req, res) => {
     }
 
     const artifactUrlsJSON = await getBuildArtifacts(id);
+    console.log(artifactUrlsJSON);
     const artifactUrls = JSON.parse(artifactUrlsJSON);
 
     // Cache the result indefinitely in Redis
