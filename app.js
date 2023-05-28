@@ -16,7 +16,7 @@ const client = wrapper(axios.create({ jar }));
 
 let builds = []; // Combined array of builds with branch information
 
-const domain = "localhost:3000"; // Replace with your own domain
+const domain = process.env.DOMAIN; // Replace with your own domain
 
 const PaperUpstreamUrl =
   "https://ci.infernalsuite.com/app/rest/ui/builds?locator=defaultFilter%3Afalse%2Cbranch%3A(policy%3AALL_BRANCHES%2Cname%3A(matchType%3Aequals%2Cvalue%3A(paper_upstream)))%2Cstate%3Afinished%2CbuildType%3A(id%3AAdvancedSlimePaper_Build)%2Cor%3A(personal%3Afalse%2Cand%3A(personal%3Atrue%2Cuser%3Acurrent))%2Cstart%3A0%2Ccount%3A16%2ClookupLimit%3A50000&fields=build(id,changes($locator(count:100),change(id,username,user(id,name,username,avatars))),artifactDependencyChanges(count))";
