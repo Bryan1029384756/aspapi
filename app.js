@@ -174,8 +174,20 @@ app.get("/v1/builds", (req, res) => {
 });
 
 app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
-  const id = req.params.id;
-  const artifactId = req.params.artifactId;
+  let id = req.params.id;
+  let artifactId = req.params.artifactId;
+
+  if (id === "latest") {
+    // Retrieve the first ID from the builds array
+    if (builds.length === 0) {
+      console.error("No builds available");
+      res.sendStatus(404);
+      return;
+    }
+    const gba = JSON.parse(await getBuildArtifacts(builds[0].id));
+    id = builds[0].id;
+    artifactId = gba[artifactId].downloadLink.split("/")[5].replace(".jar", "");
+  }
 
   try {
     await getCookie();
