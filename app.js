@@ -206,24 +206,20 @@ app.get("/v1/builds", (req, res) => {
   res.send(prettyBuilds);
 });
 
-app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
+app.get("/v1/builds/latest/output/:artifactId.jar", async (req, res) => {
   let id = req.params.id;
   let artifactId = req.params.artifactId;
 
-  if (id === "latest") {
-    // Retrieve the first ID from the builds array
-    if (builds.length === 0) {
-      console.error("No builds available");
-      res.sendStatus(404);
-      return;
-    }
-    const gba = JSON.parse(await getBuildArtifacts(builds[0].id));
-    id = builds[0].id;
-    artifactId = gba[artifactId].downloadLink.split("/")[5].replace(".jar", "");
+  // Retrieve the first ID from the builds array
+  if (builds.length === 0) {
+    console.error("No builds available");
+    res.sendStatus(404);
+    return;
   }
-
+  const gba = JSON.parse(await getBuildArtifacts(builds[0].id));
+  id = builds[0].id;
+  const downloadLink = gba[artifactId].downloadLink;
   try {
-    await getCookie();
     const downloadConfig = {
       headers: {
         "User-Agent":
@@ -234,10 +230,7 @@ app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
       responseType: "stream", // Set response type to stream
     };
 
-    const response = await client.get(
-      `https://ci.infernalsuite.com/repository/download/AdvancedSlimePaper_Build/${id}:id/output/${artifactId}.jar`,
-      downloadConfig
-    );
+    const response = await client.get(downloadLink, downloadConfig);
 
     res.set({
       "Content-Type": "application/octet-stream",
