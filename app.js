@@ -4,25 +4,23 @@ import { wrapper } from "axios-cookiejar-support";
 import { CookieJar } from "tough-cookie";
 import redis from "redis";
 import dotenv from "dotenv";
+import { load } from "cheerio";
 dotenv.config();
 
 const redisURL = process.env.REDIS_URL;
+const port = process.env.PORT || 3000;
 
 const app = express();
-const port = 3000;
-
 const jar = new CookieJar();
 const client = wrapper(axios.create({ jar }));
 
-let builds = []; // Combined array of builds with branch information
-
-const domain = process.env.DOMAIN; // Replace with your own domain
+let builds = [];
 
 const PaperUpstreamUrl =
   "https://ci.infernalsuite.com/app/rest/ui/builds?locator=defaultFilter%3Afalse%2Cbranch%3A(policy%3AALL_BRANCHES%2Cname%3A(matchType%3Aequals%2Cvalue%3A(paper_upstream)))%2Cstate%3Afinished%2CbuildType%3A(id%3AAdvancedSlimePaper_Build)%2Cor%3A(personal%3Afalse%2Cand%3A(personal%3Atrue%2Cuser%3Acurrent))%2Cstart%3A0%2Ccount%3A16%2ClookupLimit%3A50000&fields=build(id,changes($locator(count:100),change(id,username,user(id,name,username,avatars))),artifactDependencyChanges(count))";
 
 const MainBuildsUrl =
-  "https://ci.infernalsuite.com/app/rest/ui/builds?locator=defaultFilter%3Afalse%2Cbranch%3A(default%3Atrue)%2Cstate%3Afinished%2CbuildType%3A(id%3AAdvancedSlimePaper_Build)%2Cor%3A(personal%3Afalse%2Cand%3A(personal%3Atrue%2Cuser%3Acurrent))%2Cstart%3A0%2Ccount%3A251%2ClookupLimit%3A50000&fields=count,build(id,number,branchName,defaultBranch,queuedDate,startDate,finishDate,history,composite,links(link(type,relativeUrl)),comment(text,timestamp,user(id,name,username)),statusChangeComment(text,timestamp,user(id,name,username)),statusText,status,state,failedToStart,personal,detachedFromAgent,finishOnAgentDate,pinned,pinInfo(text,timestamp,user(id,name,username)),user(id,name,username),customization,canceledInfo(text,user(id,name,username)),agent(name,id,links(link(type,relativeUrl)),environment(osType),typeId,connected,pool(id,name)),tags(tag(name,private),$locator(private:any,owner:current)),artifacts($locator(count:1),count:($optional)),limitedChangesCount($optional),buildType(id,paused,internalId,projectId,name,type,links(link(type,relativeUrl))),snapshot-dependencies(count:(1)))";
+  "https://ci.infernalsuite.com/app/rest/ui/builds?locator=defaultFilter%3Afalse%2Cbranch%3A(default%3Atrue)%2Cstate%3Afinished%2CbuildType%3A(id%3AAdvancedSlimePaper_Build)%2Cor%3A(personal%3Afalse%2Cand%3A(personal%3Atrue%2Cuser%3Acurrent))%2Cstart%3A0%2Ccount%3A251%2ClookupLimit%3A50000&fields=build(id,changes($locator(count:100),change(id,username,user(id,name,username,avatars))),artifactDependencyChanges(count))";
 
 const redisClient = redis.createClient({
   url: redisURL,
@@ -42,17 +40,19 @@ redisClient.on("error", (error) => {
   console.error("Redis connection error:", error);
 });
 
+const config = {
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+    "Cache-Control": "no-cache",
+  },
+  withCredentials: true,
+};
 async function getCookie() {
   try {
-    const response = await client.get(
+    await client.get(
       "https://ci.infernalsuite.com/guestLogin.html?guest=1",
-      {
-        withCredentials: true,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        },
-      }
+      config
     );
   } catch (error) {
     console.error(`Error getting cookie: ${error}`);
@@ -61,32 +61,21 @@ async function getCookie() {
 
 async function getBuilds(url, branch) {
   try {
-    const config = {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Cache-Control": "no-cache",
-      },
-      withCredentials: true,
-    };
-
     const response = await client.get(url, config);
 
-    let data = response.data;
-    if (Buffer.isBuffer(data)) {
-      data = data.toString();
-    } else if (typeof data === "object") {
-      data = JSON.stringify(data);
-    }
+    let data = JSON.stringify(response.data);
 
-    const test = JSON.parse(data);
-    const buildsData = test.build;
+    const buildData = JSON.parse(data);
+
+    const buildsData = buildData.build;
     for (const build of buildsData) {
-      if (build.id <= 281) continue;
+      if (build.id <= 283) continue; //Any Builds 281 and under dont have download files that i have seen
+      const changeId = build.changes?.change?.[0]?.id; // Accessing change id using optional chaining
+      if (!changeId) continue; // Skip if change id is not defined
       const buildInfo = {
         id: build.id,
+        changeId: build.changes.change[0].id, // Accessing change id for downloadFile
         branch: branch,
-        // artifacts_url: domain + "/v1/builds/" + build.id,
       };
       builds.push(buildInfo);
     }
@@ -95,17 +84,29 @@ async function getBuilds(url, branch) {
   }
 }
 
+async function getRevision(changeId) {
+  try {
+    await getCookie();
+
+    const url =
+      "https://ci.infernalsuite.com/viewModification.html?modId=" +
+      changeId +
+      "&personal=false&tab=vcsModificationFiles";
+
+    const { data: html } = await client.get(url, config);
+    const $ = load(html);
+    const text = $(".revisionNum:first").text();
+
+    return text.trim();
+  } catch (error) {
+    console.error(`Error getting commit hash from HTML: ${error}`);
+  }
+}
+
 async function getBuildArtifacts(id) {
   try {
     await getCookie();
-    const config = {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Cache-Control": "no-cache",
-      },
-      withCredentials: true,
-    };
+
     const response = await client.get(
       "https://ci.infernalsuite.com/app/rest/ui/builds/id:" +
         id +
@@ -113,30 +114,62 @@ async function getBuildArtifacts(id) {
       config
     );
 
-    let data = response.data;
-    if (Buffer.isBuffer(data)) {
-      data = data.toString();
-    } else if (typeof data === "object") {
-      data = JSON.stringify(data);
-    }
-    const test = JSON.parse(data);
-    const files = test.file;
+    let data = JSON.stringify(response.data);
+
+    const artifactData = JSON.parse(data);
+    const files = artifactData.file;
+
+    const redisData = await redisClient.get("builds");
+
+    const branch = await getBranch(redisData, id);
+    const changeId = await getChangeId(redisData, id);
+    const revision = await getRevision(changeId);
 
     let artifactUrls = {};
     for (const file of files) {
       artifactUrls[file.name.split("-")[0]] = {
-        downloadLink: createDownloadLink(id, file.name),
+        downloadLink: await createDownloadLink(file.name, branch, revision),
         size: file.size,
       };
     }
     return JSON.stringify(artifactUrls);
   } catch (error) {
-    console.error(`Error getting builds: ${error}`);
+    console.error(`Error getting Build Artifacts: ${error}`);
   }
 }
 
-function createDownloadLink(id, artifact) {
-  return domain + "/v1/builds/" + id + "/output/" + artifact;
+async function getBranch(redisData, id) {
+  try {
+    const buildData = JSON.parse(redisData);
+    for (const build of buildData) {
+      if (build.id == id) {
+        return build.branch;
+      }
+    }
+  } catch (error) {
+    console.error(`Error loading branch: ${error}`);
+    await updateCache();
+  }
+}
+
+async function getChangeId(redisData, id) {
+  try {
+    const buildData = JSON.parse(redisData);
+    for (const build of buildData) {
+      if (build.id == id) {
+        return build.changeId;
+      }
+    }
+  } catch (error) {
+    console.error(`Error loading changeID: ${error}`);
+    await updateCache();
+  }
+}
+
+async function createDownloadLink(artifact, branch, revision) {
+  return (
+    "https://dl.rapture.pw/IS/ASP/" + branch + "/" + revision + "/" + artifact
+  );
 }
 
 async function updateCache() {
@@ -191,7 +224,7 @@ app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
 
   try {
     await getCookie();
-    const config = {
+    const downloadConfig = {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
@@ -203,7 +236,7 @@ app.get("/v1/builds/:id/output/:artifactId.jar", async (req, res) => {
 
     const response = await client.get(
       `https://ci.infernalsuite.com/repository/download/AdvancedSlimePaper_Build/${id}:id/output/${artifactId}.jar`,
-      config
+      downloadConfig
     );
 
     res.set({
