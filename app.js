@@ -48,9 +48,6 @@ const config = {
   },
   withCredentials: true,
 };
-
-// getRevision(537);
-
 async function getCookie() {
   try {
     await client.get(
@@ -73,6 +70,8 @@ async function getBuilds(url, branch) {
     const buildsData = buildData.build;
     for (const build of buildsData) {
       if (build.id <= 281) continue; //Any Builds 281 and under dont have download files that i have seen
+      const changeId = build.changes?.change?.[0]?.id; // Accessing change id using optional chaining
+      if (!changeId) continue; // Skip if change id is not defined
       const buildInfo = {
         id: build.id,
         changeId: build.changes.change[0].id, // Accessing change id for downloadFile
@@ -135,7 +134,7 @@ async function getBuildArtifacts(id) {
     }
     return JSON.stringify(artifactUrls);
   } catch (error) {
-    console.error(`Error getting builds: ${error}`);
+    console.error(`Error getting Build Artifacts: ${error}`);
   }
 }
 
@@ -281,20 +280,6 @@ app.get("/v1/builds/:id", async (req, res) => {
     res.sendStatus(500);
   }
 });
-
-async function getCommitsFromGithub(id) {
-  try {
-    const response = await client.get(
-      "https://api.github.com/repos/InfernalSuite/AdvancedSlimePaper/commits?sha=paper_upstream",
-      config
-    );
-    let data = JSON.stringify(response.data);
-
-    return JSON.parse(data);
-  } catch (error) {
-    console.error(`Error getting builds: ${error}`);
-  }
-}
 
 app.listen(port, () => {
   console.log(`API server is running on port ${port}`);
