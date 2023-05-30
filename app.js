@@ -219,30 +219,8 @@ app.get("/v1/builds/latest/output/:artifactId.jar", async (req, res) => {
   const gba = JSON.parse(await getBuildArtifacts(builds[0].id));
   id = builds[0].id;
   const downloadLink = gba[artifactId].downloadLink;
-  try {
-    const downloadConfig = {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Cache-Control": "no-cache",
-      },
-      withCredentials: true,
-      responseType: "stream", // Set response type to stream
-    };
 
-    const response = await client.get(downloadLink, downloadConfig);
-
-    res.set({
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${artifactId}.jar"`,
-    });
-
-    // Pipe the response stream to the API response
-    response.data.pipe(res);
-  } catch (error) {
-    console.error(`Error streaming file: ${error}`);
-    res.sendStatus(500);
-  }
+  res.redirect(downloadLink);
 });
 
 app.get("/v1/builds/:id", async (req, res) => {
